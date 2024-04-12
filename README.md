@@ -4,4 +4,4 @@
 
 [Starter Pack](github.com/wass08/wawa-guys-starter)
 
-[Watch the vdeo tutorial](https://youtu.be/_yx2fh8KEak)
+[Watch the video tutorial](https://youtu.be/_yx2fh8KEak)
