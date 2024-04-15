@@ -15,6 +15,8 @@ import { useAudioManager } from "../hooks/useAudioManager";
 import { useGameState } from "../hooks/useGameState";
 import { Character } from "./Character";
 import { FLOORS, FLOOR_HEIGHT } from "./GameArena";
+import { useEffect } from "react";
+import { MathUtils } from "three";
 
 const MOVEMENT_SPEED = 4.2;
 const JUMP_FORCE = 8;
@@ -36,10 +38,15 @@ export const CharacterController = ({
   const rb = useRef();
   const inTheAir = useRef(true);
   const landed = useRef(false);
+  const isDiving = useRef(false);
   const cameraPosition = useRef();
   const cameraLookAt = useRef();
+  const jumpIsHeld = useRef(false);
+  const guy = useRef();
 
-  useFrame(({ camera }) => {
+
+
+  useFrame(({ camera}) => {
     if (stage === "lobby") {
       return;
     }
@@ -48,7 +55,7 @@ export const CharacterController = ({
       if (!cameraLookAt.current) {
         cameraLookAt.current = rbPosition;
       }
-      cameraLookAt.current.lerp(rbPosition, 0.05);
+      cameraLookAt.current.lerp(rbPosition, 0.1);
       camera.lookAt(cameraLookAt.current);
       const worldPos = rbPosition;
       cameraPosition.current.getWorldPosition(worldPos);
@@ -88,6 +95,9 @@ export const CharacterController = ({
     const joystickX = Math.sin(angle);
     const joystickY = Math.cos(angle);
 
+    if (isDiving.current) {
+      vel.z += MOVEMENT_SPEED * 2;
+    }
     if (
       get()[Controls.forward] ||
       (controls.isJoystickPressed() && joystickY < -0.1)
@@ -120,11 +130,13 @@ export const CharacterController = ({
     if (
       (get()[Controls.jump] || controls.isPressed("Jump")) &&
       !inTheAir.current &&
-      landed.current
+      landed.current &&
+      !jumpIsHeld.current
     ) {
       vel.y += JUMP_FORCE;
       inTheAir.current = true;
       landed.current = false;
+      jumpIsHeld.current = true;
     } else {
       vel.y = curVel.y;
     }
@@ -134,24 +146,50 @@ export const CharacterController = ({
     } else {
       inTheAir.current = false;
     }
+
+    if (!get()[Controls.jump]) {
+      jumpIsHeld.current = false;
+    }
     rb.current.setLinvel(vel);
     state.setState("pos", rb.current.translation());
     state.setState("rot", rb.current.rotation());
 
     // ANIMATION
     const movement = Math.abs(vel.x) + Math.abs(vel.z);
-    if (inTheAir.current && vel.y > 2) {
-      setAnimation("jump_up");
-      state.setState("animation", "jump_up");
-    } else if (inTheAir.current && vel.y < -5) {
-      setAnimation("fall");
-      state.setState("animation", "fall");
-    } else if (movement > 1 || inTheAir.current) {
-      setAnimation("run");
-      state.setState("animation", "run");
+    if (!isDiving.current) {
+      if (inTheAir.current && vel.y > 2) {
+        setAnimation("jump_up");
+        state.setState("animation", "jump_up");
+      } else if (inTheAir.current && vel.y < -5) {
+        setAnimation("fall");
+        state.setState("animation", "fall");
+      } else if (movement > 1 || inTheAir.current) {
+        setAnimation("run");
+        state.setState("animation", "run");
+      } else {
+        setAnimation("idle");
+        state.setState("animation", "idle");
+      }
+    }
+    console.log(animation)
+
+    if (get()[Controls.dive] && inTheAir.current && !isDiving.current) {
+      isDiving.current = true;
+    }
+    if (isDiving.current && inTheAir.current) {
+      setAnimation("dive");
+      state.setState("animation", "dive");
+      guy.current.rotation.x = MathUtils.lerp(
+        guy.current.rotation.x,
+        Math.PI / 2,
+        0.2
+      );
     } else {
-      setAnimation("idle");
-      state.setState("animation", "idle");
+      guy.current.rotation.x = MathUtils.lerp(guy.current.rotation.x, 0, 0.1);
+    }
+
+    if (!inTheAir.current && landed.current) {
+      isDiving.current = false;
     }
 
     if (
@@ -178,6 +216,7 @@ export const CharacterController = ({
       canSleep={false}
       enabledRotations={[false, true, false]}
       ref={rb}
+      ccd
       onCollisionEnter={(e) => {
         if (e.other.rigidBodyObject.name === "hexagon") {
           inTheAir.current = false;
@@ -191,13 +230,15 @@ export const CharacterController = ({
       name={player ? "player" : "other"}
     >
       <group ref={cameraPosition} position={[0, 8, -16]}></group>
-      <Character
-        scale={0.42}
-        color={state.state.profile.color}
-        name={state.state.profile.name}
-        position-y={0.2}
-        animation={animation}
-      />
+      <group ref={guy}>
+        <Character
+          scale={0.42}
+          color={state.state.profile.color}
+          name={state.state.profile.name}
+          position-y={0.2}
+          animation={animation}
+        />
+      </group>
       <CapsuleCollider args={[0.1, 0.38]} position={[0, 0.68, 0]} />
     </RigidBody>
   );
